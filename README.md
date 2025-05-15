@@ -63,6 +63,53 @@ The system evaluates model performance using:
   - Minimum samples per tag
   - Number of tags to predict
   - Model hyperparameters
+ 
+## Dataset Sampling and Memory Management
+Due to hardware limitations and the large size of the complete StackOverflow dataset, this implementation uses only 45% of the available data (controlled by the SAMPLE_FRACTION = 0.45 parameter) to prevent system crashes during processing. The memory-efficient sampling is implemented in two key sections:
+
+```python
+def load_and_sample(filename, usecols):
+    # First pass to get row count
+    with open(DATA_DIR / filename, 'r', encoding='ISO-8859-1') as f:
+        n_rows = sum(1 for _ in f) - 1
+    
+    # Calculate rows to skip using random sampling
+    skip = sorted(np.random.choice(
+        np.arange(1, n_rows+1),
+        size=int(n_rows * (1 - SAMPLE_FRACTION)),
+        replace=False
+    ))
+    
+    # Read CSV while skipping selected rows
+    return pd.read_csv(...)
+
+```
+
+This function first counts total rows, then randomly selects a subset to load, significantly reducing memory usage.
+
+
+
+Memory Monitoring
+
+```python
+def print_memory_usage():
+    print(f"Memory used: {psutil.virtual_memory().percent}%")
+
+# Explicit garbage collection calls throughout:
+gc.collect()
+```
+
+The script includes periodic memory checks and manual garbage collection to manage resources. Additional optimizations include:
+
+Deleting unused columns immediately after processing
+
+Using float32 instead of float64 in the TF-IDF vectorizer
+
+Limiting feature space to 3000 dimensions
+
+While this sampling approach reduces the training data volume, it maintains representative tag distributions through stratified sampling where possible (Lines 198-206).
+
+
 
 ## Dependencies
 
@@ -321,5 +368,200 @@ print_memory_usage()
 ```
 
 
+## Code Explanation 
 
+####  Importing Necessary Libraries
+
+```python
+import pandas as pd
+import re
+import pickle
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report, hamming_loss
+from tqdm import tqdm
+import psutil
+import gc
+import warnings
+from pathlib import Path
+
+```
+Libraries used for data processing, machine learning, memory monitoring, and more.
+
+
+####  Initialize Environment
+
+
+```python
+tqdm.pandas()
+warnings.filterwarnings('ignore')
+
+```
+Enables progress bars on pandas operations.
+Suppresses unnecessary warnings.
+
+
+####  Utility Functions
+
+
+```python
+def clean_text(text):
+    try:
+        if pd.isna(text) or text == '': return ""
+        text = re.sub(r'<[^>]+>', ' ', str(text))
+        text = re.sub(r'[^\w\s.,;?!]', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.lower().strip() or "emptytext"
+    except Exception as e:
+        print(f"Error cleaning text: {str(e)}")
+        return "error_text"
+
+```
+Prints the memory usage 
+Cleans HTML tags, special characters, and normalizes whitespace.
+
+
+
+####  Configuration Settings
+
+```python
+DATA_DIR = Path("C:/Users/Mudassir/.../Assignment 1/")
+SAMPLE_FRACTION = 0.45
+MIN_SAMPLES_PER_TAG = 10
+TOP_N_TAGS = 10
+```
+
+Controls input location, sampling, and tag filtering.
+
+
+
+
+####   Load and Sample Data
+
+```python
+def load_and_sample(filename, usecols):
+    ...
+```
+Efficiently loads a random subset of rows.
+Handles encoding and file read errors.
+
+
+####   Load Questions, Answers, Tags
+
+```python
+questions = load_and_sample('Questions.csv', ['Id', 'Title', 'Body'])
+answers = load_and_sample('Answers.csv', ['ParentId', 'Body'])
+tags = load_and_sample('Tags.csv', ['Id', 'Tag'])
+    ...
+```
+Loads the three core datasets.
+
+
+
+####   Text Cleaning and Merging
+
+```python
+questions['cleaned_text'] = questions['Title'] + questions['Body'].progress_apply(clean_text)
+answers['cleaned_body'] = answers['Body'].progress_apply(clean_text)
+    ...
+```
+Applies clean_text() to both questions and answers.
+
+
+
+####   Tag Filtering and Merging
+
+```python
+tag_counts = tags['Tag'].value_counts()
+top_tags = tag_counts[tag_counts >= MIN_SAMPLES_PER_TAG].index.tolist()[:TOP_N_TAGS]
+...
+final_data = pd.merge(...)
+    ...
+```
+Selects top N tags.
+Merges questions and answers.
+
+
+
+####   Create Final Text Feature
+
+```python
+tag_counts = tags['Tag'].value_counts()
+top_tags = tag_counts[tag_counts >= MIN_SAMPLES_PER_TAG].index.tolist()[:TOP_N_TAGS]
+...
+final_data = pd.merge(...)
+    ...
+```
+
+Combines question and answer text into one field for modeling.
+
+
+
+
+####   Model Preparation
+
+```python
+y = MultiLabelBinarizer().fit_transform(final_data['Tag'])
+X = final_data['full_text']
+```
+Transforms tag labels into binary vectors.
+
+
+
+
+####   Train-Test Split
+
+```python
+X_train, X_test, y_train, y_test = train_test_split(...)
+```
+Splits data with stratification if possible.
+
+
+
+####   Model Training and Evaluation
+
+```python
+pipeline.fit(X_train, y_train)
+y_pred = pipeline.predict(X_test)
+print(classification_report(...))
+```
+Trains and evaluates the model.
+
+
+####   Save Predictions
+
+```python
+test_data['predicted_tags'] = ...
+test_data.to_csv("test_predictions.csv")
+```
+Converts binary predictions back to tag names.
+Saves output with predictions.
+
+
+####   Save Model Artifacts
+
+```python
+model_artifacts = {
+    'model': pipeline,
+    'mlb': mlb,
+    'top_tags': top_tags,
+    ...
+}
+with open("stackoverflow_tag_predictor_45percent.pkl", 'wb') as f:
+    pickle.dump(model_artifacts, f)
+```
+Stores the model, label binarizer, and configuration.
+
+
+
+####   Final Memory Check
+
+```python
+print_memory_usage()
+```
 
