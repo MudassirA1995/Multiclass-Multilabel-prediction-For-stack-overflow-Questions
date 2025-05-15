@@ -565,6 +565,33 @@ Stores the model, label binarizer, and configuration.
 print_memory_usage()
 ```
 
+
+
+##  Model Performance Metrics
+The model saved as stackoverflow_tag_predictor_45percent.pkl was evaluated using standard classification metrics. The table below summarizes its performance across the top 10 most frequent StackOverflow tags:
+
+| Tag         | Precision | Recall | F1-Score | Support |
+|-------------|-----------|--------|----------|---------|
+| android     | 0.78      | 0.93   | 0.85     | 3,618   |
+| c#          | 0.66      | 0.91   | 0.77     | 4,072   |
+| c++         | 0.57      | 0.92   | 0.70     | 1,849   |
+| html        | 0.34      | 0.86   | 0.48     | 2,467   |
+| ios         | 0.77      | 0.92   | 0.84     | 1,815   |
+| java        | 0.66      | 0.89   | 0.76     | 4,739   |
+| javascript  | 0.55      | 0.88   | 0.68     | 5,045   |
+| jquery      | 0.47      | 0.90   | 0.62     | 3,219   |
+| php         | 0.75      | 0.91   | 0.82     | 4,066   |
+| python      | 0.83      | 0.94   | 0.88     | 2,584   |
+
+Observations:
+The classifier demonstrates strong performance on tags like python, android, and ios with F1-scores above 0.84.
+
+Tags such as html, c++, and javascript show lower precision, indicating some label noise or semantic overlap with other tags.
+
+Overall, the model achieves high recall across all tags, ensuring minimal missed predictions, which is important for multi-label classification.
+
+The trained model is saved as stackoverflow_tag_predictor_45percent.pkl
+
 ## Dropbox Link for output file 
 
 This is the dropbox link for the output prediction csv files :
